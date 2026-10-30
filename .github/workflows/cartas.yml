@@ -1,0 +1,62 @@
+# Workflow del repositorio PÚBLICO de imágenes de cartas (garaje-tcg-cartas).
+#
+# Va en ese repositorio como .github/workflows/cartas.yml, junto con
+# build_card_db.py y banlist_edison.txt en la raíz (ver tools/cards/LEEME.md).
+#
+# Qué hace (pestaña Actions → "Cartas Edison" → Run workflow):
+#   1. Baja de YGOPRODeck las cartas de Edison Format y sus imágenes
+#      (solo la primera vez; las siguientes usa la caché).
+#   2. Publica todo en GitHub Pages:
+#        https://lachy97.github.io/garaje-tcg-cartas/edison_cards.json
+#        https://lachy97.github.io/garaje-tcg-cartas/s/<código>.jpg  (carta pequeña)
+#        https://lachy97.github.io/garaje-tcg-cartas/a/<código>.jpg  (ilustración)
+name: Cartas Edison
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: cartas-edison
+  cancel-in-progress: false
+
+jobs:
+  generar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # Las imágenes ya bajadas se guardan entre ejecuciones.
+      - name: Caché de imágenes
+        uses: actions/cache@v4
+        with:
+          path: build/card_site
+          key: card-site-${{ github.run_id }}
+          restore-keys: card-site-
+
+      - name: Generar base de cartas e imágenes
+        run: python build_card_db.py --json build/card_site/edison_cards.json --site build/card_site
+
+      - name: Preparar GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/card_site
+
+  publicar:
+    needs: generar
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v4
